@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Flip or Sip — Prototype</title>
+<style>
+:root{
+  --green:#063b2b; --green2:#0b4a36; --green3:#164f3b;
+  --black:#08100d; --gold:#d9a847; --gold2:#e2b85d;
+  --cream:#eee9dc; --muted:#b8b7ad; --red:#b9573e;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--black);color:var(--cream);font-family:Arial,Helvetica,sans-serif;min-height:100vh}
+.app{max-width:1050px;margin:auto;min-height:100vh;background:linear-gradient(180deg,#062f24,#07382a 70%,#051d16);padding:18px clamp(12px,3vw,34px) 34px;border-radius:0 0 34px 34px}
+.brand{text-align:center;padding:4px 0 16px}
+h1{font-family:Georgia,serif;color:var(--gold2);font-size:clamp(44px,8vw,76px);line-height:.95;margin:0}
+.tag{font-size:clamp(16px,2.3vw,24px);color:#c9c6ba;margin-top:12px}
+.panel{border:1px solid #355344;border-radius:24px;background:rgba(3,25,19,.48);padding:18px;margin-top:14px}
+h2{margin:2px 0 14px;color:var(--gold2);font-size:clamp(19px,2.6vw,28px);letter-spacing:2px;text-transform:uppercase}
+.players{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.player{border:2px solid #284b3d;border-radius:18px;background:#082f24;padding:12px 8px;text-align:center;min-height:78px;transition:.2s}
+.player .name{font-weight:700;font-size:clamp(15px,2.2vw,22px)}
+.player .score{font-weight:800;font-size:24px;color:var(--gold2);margin-top:4px}
+.player .sips{font-size:11px;color:#b8b7ad;margin-top:2px}
+.player.active{border-color:var(--gold2);box-shadow:0 0 0 3px rgba(217,168,71,.15),0 0 22px rgba(217,168,71,.28);background:#27402a}
+.turn{text-align:center;font-size:clamp(18px,2.5vw,25px);margin:18px 0 14px}.turn b{color:var(--gold2)}
+.board{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.card{aspect-ratio:3/4;border:2px solid var(--gold);border-radius:18px;background:linear-gradient(145deg,#176346,#0b412f);position:relative;overflow:hidden;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.card .mark{font-size:34px;color:#aa914f;opacity:.8}
+.card img{width:100%;height:100%;object-fit:cover;display:block}
+.card.matched{visibility:hidden;pointer-events:none}
+.card.flipped{background:#071c15}
+.card.disabled{pointer-events:none;opacity:.65}
+.controls{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
+button,.filelabel{border:2px solid var(--gold);background:transparent;color:var(--cream);border-radius:16px;padding:14px 18px;font-size:17px;font-weight:700;cursor:pointer}
+button.primary,.filelabel.primary{background:var(--gold);color:#10130f}
+button.danger{border-color:var(--red);color:#e58d77}
+button:active,.filelabel:active{transform:translateY(1px)}
+input[type=file]{display:none}
+.small{font-size:14px;color:var(--muted);line-height:1.45}
+.upload-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.upload-box{border:1px dashed #6f795d;border-radius:16px;padding:12px;min-height:120px;background:#092b21}
+.upload-box h3{margin:0 0 8px;color:var(--gold2);font-size:15px}
+.preview{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}
+.thumb{width:54px;height:54px;border-radius:8px;object-fit:cover;border:1px solid #6f795d}
+.statline{display:flex;justify-content:space-between;gap:12px;margin-top:12px;padding:12px 14px;background:#06281e;border-radius:14px}
+.hot{color:#ffbf63;font-weight:800}
+.notice{display:none;margin:12px 0;padding:13px;border-radius:14px;background:#25432f;border:1px solid var(--gold);text-align:center;font-weight:700}
+.notice.show{display:block}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;align-items:center;justify-content:center;padding:18px;z-index:10}
+.modal.show{display:flex}
+.dialog{width:min(620px,100%);background:#073225;border:1px solid #4d654e;border-radius:24px;padding:20px;box-shadow:0 20px 70px #000}
+.dialog h2{margin-top:0}
+.kill-list{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;max-height:55vh;overflow:auto;margin-top:14px}
+.kill-item{border:1px solid #536652;border-radius:12px;overflow:hidden;background:#09281f;cursor:pointer}
+.kill-item img{width:100%;aspect-ratio:1;object-fit:cover;display:block}
+.kill-item span{display:block;padding:7px;font-size:12px;text-align:center}
+@media(max-width:650px){
+  .app{padding:12px 10px 24px;border-radius:0}
+  .panel{padding:12px;border-radius:18px}
+  .players{gap:6px}.player{min-height:68px;padding:8px 3px;border-radius:13px}.player .score{font-size:20px}
+  .board{gap:7px}.card{border-radius:12px}
+  button,.filelabel{padding:12px 13px;font-size:15px}
+  .upload-grid{grid-template-columns:repeat(2,1fr)}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="brand">
+    <h1>Flip or Sip</h1>
+    <div class="tag">A photo memory game with consequences</div>
+  </header>
+
+  <section class="panel" id="setup">
+    <h2>1. Add your pictures</h2>
+    <div class="small">Each player adds pictures. Every picture becomes a matching pair. Photos stay only in this browser session and disappear when the game is ended or the page is refreshed.</div>
+    <div class="upload-grid" id="uploadGrid"></div>
+    <div class="controls">
+      <button class="primary" id="buildBtn">Build Game Board</button>
+      <button id="clearBtn">Clear All Pictures</button>
+    </div>
+  </section>
+
+  <section class="panel" id="game" style="display:none">
+    <div class="players" id="players"></div>
+    <div class="turn" id="turn"></div>
+    <div class="notice" id="notice"></div>
+    <div class="board" id="board"></div>
+    <div class="statline">
+      <span>Current streak: <span class="hot" id="streak">0</span></span>
+      <span>Pairs left: <span id="pairsLeft">0</span></span>
+    </div>
+    <div class="controls">
+      <button class="danger" id="killBtn">🔥 Kill Picture — 2 Sip Penalty</button>
+      <button id="newBtn">New Game</button>
+    </div>
+  </section>
+</div>
+
+<div class="modal" id="killModal">
+  <div class="dialog">
+    <h2>Kill a picture</h2>
+    <div class="small">Choose the picture that was uploaded by mistake. Its matching pair will be removed too. The current player takes a 2-sip penalty.</div>
+    <div class="kill-list" id="killList"></div>
+    <div class="controls"><button id="closeKill">Cancel</button></div>
+  </div>
+</div>
+
+<script>
+const players = [
+  {name:'Player 1',matches:0,sips:0,photos:[]},
+  {name:'Player 2',matches:0,sips:0,photos:[]},
+  {name:'Player 3',matches:0,sips:0,photos:[]},
+  {name:'Player 4',matches:0,sips:0,photos:[]}
+];
+
+let cards=[], flipped=[], matched=0, turn=0, locked=false, streak=0;
+
+const uploadGrid=document.getElementById('uploadGrid');
+
+players.forEach((p,i)=>{
+  const box=document.createElement('div');
+  box.className='upload-box';
+  box.innerHTML=`<h3>${p.name}</h3>
+    <label class="filelabel" style="display:inline-block">
+      Upload photos<input type="file" accept="image/*" multiple>
+    </label>
+    <div class="preview" id="prev${i}"></div>`;
+
+  box.querySelector('input').addEventListener('change',e=>{
+    [...e.target.files].forEach(file=>{
+      if(!file.type.startsWith('image/')) return;
+      const url=URL.createObjectURL(file);
+      p.photos.push({id:crypto.randomUUID(),url});
+      renderPreviews(i);
+    });
+    e.target.value='';
+  });
+
+  uploadGrid.appendChild(box);
+});
+
+function renderPreviews(i){
+  const el=document.getElementById('prev'+i);
+  el.innerHTML='';
+  players[i].photos.forEach(x=>{
+    const img=document.createElement('img');
+    img.src=x.url;
+    img.className='thumb';
+    el.appendChild(img);
+  });
+}
+
+document.getElementById('clearBtn').onclick=()=>{
+  players.forEach((p,i)=>{
+    p.photos.forEach(x=>URL.revokeObjectURL(x.url));
+    p.photos=[];
+    renderPreviews(i);
+  });
+};
+
+function shuffle(a){
+  for(let i=a.length-1;i>0;i--){
+    let j=Math.floor(Math.random()*(i+1));
+    [a[i],a[j]]=[a[j],a[i]];
+  }
+  return a;
+}
+
+document.getElementById('buildBtn').onclick=()=>{
+  const all=players.flatMap((p,pi)=>p.photos.map(photo=>({...photo,owner:pi})));
+
+  if(all.length<2){
+    alert('Add at least 2 pictures to start.');
+    return;
+  }
+
+  if(all.length>24){
+    alert('For this prototype, use 24 pictures or fewer.');
+    return;
+  }
+
+  cards=shuffle(all.flatMap(x=>[
+    {...x,uid:crypto.randomUUID(),flipped:false,matched:false},
+    {...x,uid:crypto.randomUUID(),flipped:false,matched:false}
+  ]));
+
+  matched=0;
+  flipped=[];
+  turn=0;
+  streak=0;
+  locked=false;
+
+  document.getElementById('setup').style.display='none';
+  document.getElementById('game').style.display='block';
+
+  renderPlayers();
+  renderBoard();
+  updateStats();
+};
+
+function renderPlayers(){
+  document.getElementById('players').innerHTML=players.map((p,i)=>`
+    <div class="player ${i===turn?'active':''}">
+      <div class="name">${p.name}</div>
+      <div class="score">${p.matches}</div>
+      <div class="sips">matches · ${p.sips} sips</div>
+    </div>
+  `).join('');
+
+  document.getElementById('turn').innerHTML=
+    `<b>${players[turn].name}</b>'s turn — pick a card`;
+}
+
+function renderBoard(){
+  const board=document.getElementById('board');
+  board.innerHTML='';
+
+  cards.forEach((c,i)=>{
+    const el=document.createElement('div');
+    el.className='card'+(c.matched?' matched':'');
+
+    if(c.flipped && !c.matched){
+      const img=document.createElement('img');
+      img.src=c.url;
+      el.appendChild(img);
+    } else if(!c.matched){
+      el.innerHTML='<span class="mark">?</span>';
+    }
+
+    el.onclick=()=>flipCard(i);
+    board.appendChild(el);
+  });
+}
+
+function flipCard(i){
+  if(locked || cards[i].matched || cards[i].flipped) return;
+
+  cards[i].flipped=true;
+  flipped.push(i);
+  renderBoard();
+
+  if(flipped.length===2){
+    locked=true;
+    setTimeout(checkPair,700);
+  }
+}
+
+function checkPair(){
+  const [a,b]=flipped;
+  const A=cards[a],B=cards[b];
+
+  if(A.id===B.id){
+    A.matched=B.matched=true;
+    matched+=2;
+    players[turn].matches++;
+    streak++;
+
+    if(streak===2){
+      showNotice(`🔥 HOT STREAK! ${players[turn].name} gets to make someone sip.`);
+      setTimeout(chooseSipTarget,250);
+    } else if(streak>=3){
+      players.forEach((p,i)=>{
+        if(i!==turn) p.sips++;
+      });
+      showNotice(`🔥🔥🔥 3 IN A ROW! The other three players sip!`);
+      streak=0;
+    } else {
+      showNotice('Match! Keep going.');
+    }
+
+    if(matched===cards.length){
+      setTimeout(()=>alert('Game over!'),350);
+    }
+  } else {
+    A.flipped=B.flipped=false;
+    streak=0;
+    players[turn].sips++;
+    showNotice(`${players[turn].name} missed — SIP!`);
+    turn=(turn+1)%4;
+  }
+
+  flipped=[];
+  locked=false;
+  renderPlayers();
+  renderBoard();
+  updateStats();
+}
+
+function chooseSipTarget(){
+  const options=players.map((p,i)=>i===turn?'':`${i+1}: ${p.name}`).filter(Boolean).join('\\n');
+  const answer=prompt(`HOT STREAK! Choose someone to sip:\\n\\n${options}\\n\\nEnter player number 1–4:`);
+
+  const n=parseInt(answer)-1;
+
+  if(n>=0 && n<4 && n!==turn){
+    players[n].sips++;
+    showNotice(`${players[n].name} takes a sip!`);
+  }
+}
+
+function showNotice(text){
+  const n=document.getElementById('notice');
+  n.textContent=text;
+  n.classList.add('show');
+  clearTimeout(showNotice.timer);
+  showNotice.timer=setTimeout(()=>n.classList.remove('show'),3500);
+}
+
+function updateStats(){
+  document.getElementById('streak').textContent=streak;
+  document.getElementById('pairsLeft').textContent=(cards.length-matched)/2;
+}
+
+document.getElementById('killBtn').onclick=()=>{
+  const list=document.getElementById('killList');
+  list.innerHTML='';
+
+  const unique=[...new Map(cards.map(c=>[c.id,c])).values()];
+
+  unique.forEach(c=>{
+    const el=document.createElement('div');
+    el.className='kill-item';
+    el.innerHTML=`<img src="${c.url}"><span>Kill this picture</span>`;
+    el.onclick=()=>killPhoto(c.id);
+    list.appendChild(el);
+  });
+
+  document.getElementById('killModal').classList.add('show');
+};
+
+function killPhoto(id){
+  cards=cards.filter(c=>c.id!==id);
+  matched=cards.filter(c=>c.matched).length;
+  players[turn].sips+=2;
+  streak=0;
+
+  document.getElementById('killModal').classList.remove('show');
+
+  showNotice(`${players[turn].name} killed a picture — 2-sip penalty.`);
+  renderPlayers();
+  renderBoard();
+  updateStats();
+}
+
+document.getElementById('closeKill').onclick=()=>{
+  document.getElementById('killModal').classList.remove('show');
+};
+
+document.getElementById('newBtn').onclick=()=>{
+  document.getElementById('game').style.display='none';
+  document.getElementById('setup').style.display='block';
+
+  cards=[];
+  flipped=[];
+  matched=0;
+  turn=0;
+  streak=0;
+
+  players.forEach(p=>{
+    p.matches=0;
+    p.sips=0;
+  });
+};
+</script>
+</body>
+</html>
