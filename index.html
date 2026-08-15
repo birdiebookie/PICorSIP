@@ -18,6 +18,8 @@ h1{font-family:Georgia,serif;color:var(--gold2);font-size:clamp(44px,8vw,76px);l
 .tag{font-size:clamp(16px,2.3vw,24px);color:#c9c6ba;margin-top:12px}
 .panel{border:1px solid #355344;border-radius:24px;background:rgba(3,25,19,.48);padding:18px;margin-top:14px}
 h2{margin:2px 0 14px;color:var(--gold2);font-size:clamp(19px,2.6vw,28px);letter-spacing:2px;text-transform:uppercase}
+.playercount-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.playercount-row input[type=number]{width:80px;padding:12px;border-radius:12px;border:2px solid var(--gold);background:#092b21;color:var(--cream);font-size:20px;text-align:center;font-weight:800}
 .players{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
 .player{border:2px solid #284b3d;border-radius:18px;background:#082f24;padding:12px 8px;text-align:center;min-height:78px;transition:.2s}
 .player .name{font-weight:700;font-size:clamp(15px,2.2vw,22px)}
@@ -44,8 +46,9 @@ input[type=file]{display:none}
 .upload-box h3{margin:0 0 8px;color:var(--gold2);font-size:15px}
 .preview{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}
 .thumb{width:54px;height:54px;border-radius:8px;object-fit:cover;border:1px solid #6f795d}
-.statline{display:flex;justify-content:space-between;gap:12px;margin-top:12px;padding:12px 14px;background:#06281e;border-radius:14px}
+.statline{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:12px;padding:12px 14px;background:#06281e;border-radius:14px}
 .hot{color:#ffbf63;font-weight:800}
+.timer{color:var(--gold2);font-weight:800;font-size:20px}
 .notice{display:none;margin:12px 0;padding:13px;border-radius:14px;background:#25432f;border:1px solid var(--gold);text-align:center;font-weight:700}
 .notice.show{display:block}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;align-items:center;justify-content:center;padding:18px;z-index:10}
@@ -74,7 +77,14 @@ input[type=file]{display:none}
   </header>
 
   <section class="panel" id="setup">
-    <h2>1. Add your pictures</h2>
+    <h2>1. How many players?</h2>
+    <div class="playercount-row">
+      <input type="number" id="playerCount" min="1" max="8" value="4">
+      <button class="primary" id="setPlayersBtn">Set Players</button>
+      <span class="small" id="soloNote"></span>
+    </div>
+
+    <h2>2. Add your pictures</h2>
     <div class="small">Each player adds pictures. Every picture becomes a matching pair. Photos stay only in this browser session and disappear when the game is ended or the page is refreshed.</div>
     <div class="upload-grid" id="uploadGrid"></div>
     <div class="controls">
@@ -89,11 +99,13 @@ input[type=file]{display:none}
     <div class="notice" id="notice"></div>
     <div class="board" id="board"></div>
     <div class="statline">
-      <span>Current streak: <span class="hot" id="streak">0</span></span>
+      <span id="streakStat">Current streak: <span class="hot" id="streak">0</span></span>
+      <span id="timerStat" style="display:none">Time: <span class="timer" id="timerDisplay">0:00</span></span>
+      <span id="bestStat" style="display:none">Best: <span class="timer" id="bestDisplay">--:--</span></span>
       <span>Pairs left: <span id="pairsLeft">0</span></span>
     </div>
     <div class="controls">
-      <button class="danger" id="killBtn">🔥 Kill Picture — 2 Sip Penalty</button>
+      <button class="danger" id="killBtn">🔥 Kill Picture</button>
       <button id="newBtn">New Game</button>
     </div>
   </section>
@@ -102,45 +114,57 @@ input[type=file]{display:none}
 <div class="modal" id="killModal">
   <div class="dialog">
     <h2>Kill a picture</h2>
-    <div class="small">Choose the picture that was uploaded by mistake. Its matching pair will be removed too. The current player takes a 2-sip penalty.</div>
+    <div class="small" id="killDesc">Choose the picture that was uploaded by mistake. Its matching pair will be removed too.</div>
     <div class="kill-list" id="killList"></div>
     <div class="controls"><button id="closeKill">Cancel</button></div>
   </div>
 </div>
 
 <script>
-const players = [
-  {name:'Player 1',matches:0,sips:0,photos:[]},
-  {name:'Player 2',matches:0,sips:0,photos:[]},
-  {name:'Player 3',matches:0,sips:0,photos:[]},
-  {name:'Player 4',matches:0,sips:0,photos:[]}
-];
+let numPlayers = 4;
+let players = [];
 
 let cards=[], flipped=[], matched=0, turn=0, locked=false, streak=0;
+let isSolo = false;
+let timerInterval = null;
+let elapsedMs = 0;
+let timerRunning = false;
 
 const uploadGrid=document.getElementById('uploadGrid');
+const playerCountInput = document.getElementById('playerCount');
 
-players.forEach((p,i)=>{
-  const box=document.createElement('div');
-  box.className='upload-box';
-  box.innerHTML=`<h3>${p.name}</h3>
-    <label class="filelabel" style="display:inline-block">
-      Upload photos<input type="file" accept="image/*" multiple>
-    </label>
-    <div class="preview" id="prev${i}"></div>`;
+function makePlayers(n){
+  const arr=[];
+  for(let i=0;i<n;i++){
+    arr.push({name: n===1 ? 'You' : ('Player '+(i+1)), matches:0, sips:0, photos:[]});
+  }
+  return arr;
+}
 
-  box.querySelector('input').addEventListener('change',e=>{
-    [...e.target.files].forEach(file=>{
-      if(!file.type.startsWith('image/')) return;
-      const url=URL.createObjectURL(file);
-      p.photos.push({id:crypto.randomUUID(),url});
-      renderPreviews(i);
+function buildUploadGrid(){
+  uploadGrid.innerHTML='';
+  players.forEach((p,i)=>{
+    const box=document.createElement('div');
+    box.className='upload-box';
+    box.innerHTML=`<h3>${p.name}</h3>
+      <label class="filelabel" style="display:inline-block">
+        Upload photos<input type="file" accept="image/*" multiple>
+      </label>
+      <div class="preview" id="prev${i}"></div>`;
+
+    box.querySelector('input').addEventListener('change',e=>{
+      [...e.target.files].forEach(file=>{
+        if(!file.type.startsWith('image/')) return;
+        const url=URL.createObjectURL(file);
+        p.photos.push({id:crypto.randomUUID(),url});
+        renderPreviews(i);
+      });
+      e.target.value='';
     });
-    e.target.value='';
-  });
 
-  uploadGrid.appendChild(box);
-});
+    uploadGrid.appendChild(box);
+  });
+}
 
 function renderPreviews(i){
   const el=document.getElementById('prev'+i);
@@ -152,6 +176,32 @@ function renderPreviews(i){
     el.appendChild(img);
   });
 }
+
+document.getElementById('setPlayersBtn').onclick=()=>{
+  let n=parseInt(playerCountInput.value);
+  if(isNaN(n) || n<1) n=1;
+  if(n>8) n=8;
+  playerCountInput.value=n;
+
+  const hadPhotos = players.some(p=>p.photos.length>0);
+  if(hadPhotos && !confirm('Changing player count will clear uploaded pictures. Continue?')) {
+    playerCountInput.value = numPlayers;
+    return;
+  }
+
+  players.forEach(p=>p.photos.forEach(x=>URL.revokeObjectURL(x.url)));
+
+  numPlayers=n;
+  players=makePlayers(n);
+  buildUploadGrid();
+
+  document.getElementById('soloNote').textContent = n===1 ? 'Solo Mode: race the clock and beat your best time!' : '';
+};
+
+playerCountInput.onchange=()=>document.getElementById('setPlayersBtn').click();
+
+players=makePlayers(numPlayers);
+buildUploadGrid();
 
 document.getElementById('clearBtn').onclick=()=>{
   players.forEach((p,i)=>{
@@ -167,6 +217,32 @@ function shuffle(a){
     [a[i],a[j]]=[a[j],a[i]];
   }
   return a;
+}
+
+function fmtTime(ms){
+  const totalSec=Math.floor(ms/1000);
+  const m=Math.floor(totalSec/60);
+  const s=totalSec%60;
+  return m+':'+(s<10?'0':'')+s;
+}
+
+function bestTimeKey(pairCount){
+  return 'picorsip_besttime_'+pairCount;
+}
+
+function startTimer(){
+  elapsedMs=0;
+  timerRunning=true;
+  const start=Date.now();
+  timerInterval=setInterval(()=>{
+    elapsedMs=Date.now()-start;
+    document.getElementById('timerDisplay').textContent=fmtTime(elapsedMs);
+  },200);
+}
+
+function stopTimer(){
+  timerRunning=false;
+  clearInterval(timerInterval);
 }
 
 document.getElementById('buildBtn').onclick=()=>{
@@ -192,9 +268,27 @@ document.getElementById('buildBtn').onclick=()=>{
   turn=0;
   streak=0;
   locked=false;
+  isSolo = (numPlayers===1);
 
   document.getElementById('setup').style.display='none';
   document.getElementById('game').style.display='block';
+
+  document.getElementById('players').style.display = isSolo ? 'none' : 'grid';
+  document.getElementById('streakStat').style.display = isSolo ? 'none' : 'inline';
+  document.getElementById('timerStat').style.display = isSolo ? 'inline' : 'none';
+  document.getElementById('bestStat').style.display = isSolo ? 'inline' : 'none';
+  document.getElementById('killBtn').textContent = isSolo ? '🔥 Kill Picture — +10 Sec Penalty' : '🔥 Kill Picture — 2 Sip Penalty';
+  document.getElementById('killDesc').textContent = isSolo
+    ? 'Choose the picture that was uploaded by mistake. Its matching pair will be removed too. You take a 10-second time penalty.'
+    : 'Choose the picture that was uploaded by mistake. Its matching pair will be removed too. The current player takes a 2-sip penalty.';
+
+  if(isSolo){
+    const pairCount=cards.length/2;
+    const best=localStorage.getItem(bestTimeKey(pairCount));
+    document.getElementById('bestDisplay').textContent = best ? fmtTime(parseInt(best)) : '--:--';
+    document.getElementById('timerDisplay').textContent = '0:00';
+    stopTimer();
+  }
 
   renderPlayers();
   renderBoard();
@@ -202,6 +296,11 @@ document.getElementById('buildBtn').onclick=()=>{
 };
 
 function renderPlayers(){
+  if(isSolo){
+    document.getElementById('turn').innerHTML = `<b>Solo Mode</b> — find all the matches as fast as you can!`;
+    return;
+  }
+
   document.getElementById('players').innerHTML=players.map((p,i)=>`
     <div class="player ${i===turn?'active':''}">
       <div class="name">${p.name}</div>
@@ -238,6 +337,10 @@ function renderBoard(){
 function flipCard(i){
   if(locked || cards[i].matched || cards[i].flipped) return;
 
+  if(isSolo && !timerRunning && elapsedMs===0){
+    startTimer();
+  }
+
   cards[i].flipped=true;
   flipped.push(i);
   renderBoard();
@@ -255,31 +358,56 @@ function checkPair(){
   if(A.id===B.id){
     A.matched=B.matched=true;
     matched+=2;
-    players[turn].matches++;
-    streak++;
 
-    if(streak===2){
-      showNotice(`🔥 HOT STREAK! ${players[turn].name} gets to make someone sip.`);
-      setTimeout(chooseSipTarget,250);
-    } else if(streak>=3){
-      players.forEach((p,i)=>{
-        if(i!==turn) p.sips++;
-      });
-      showNotice(`🔥🔥🔥 3 IN A ROW! The other three players sip!`);
-      streak=0;
+    if(!isSolo){
+      players[turn].matches++;
+      streak++;
+
+      if(streak===2){
+        showNotice(`🔥 HOT STREAK! ${players[turn].name} gets to make someone sip.`);
+        setTimeout(chooseSipTarget,250);
+      } else if(streak>=3){
+        players.forEach((p,i)=>{
+          if(i!==turn) p.sips++;
+        });
+        showNotice(`🔥🔥🔥 3 IN A ROW! The other players sip!`);
+        streak=0;
+      } else {
+        showNotice('Match! Keep going.');
+      }
     } else {
-      showNotice('Match! Keep going.');
+      showNotice('Match!');
     }
 
     if(matched===cards.length){
-      setTimeout(()=>alert('Game over!'),350);
+      if(isSolo){
+        stopTimer();
+        const pairCount=cards.length/2;
+        const key=bestTimeKey(pairCount);
+        const best=localStorage.getItem(key);
+        const isNewBest = !best || elapsedMs < parseInt(best);
+        if(isNewBest){
+          localStorage.setItem(key, String(Math.round(elapsedMs)));
+        }
+        setTimeout(()=>{
+          alert(isNewBest
+            ? `New Best Time! ${fmtTime(elapsedMs)}`
+            : `Finished in ${fmtTime(elapsedMs)}. Best time: ${fmtTime(parseInt(best))}`);
+        },350);
+      } else {
+        setTimeout(()=>alert('Game over!'),350);
+      }
     }
   } else {
     A.flipped=B.flipped=false;
-    streak=0;
-    players[turn].sips++;
-    showNotice(`${players[turn].name} missed — SIP!`);
-    turn=(turn+1)%4;
+    if(!isSolo){
+      streak=0;
+      players[turn].sips++;
+      showNotice(`${players[turn].name} missed — SIP!`);
+      turn=(turn+1)%numPlayers;
+    } else {
+      showNotice('Missed! Keep trying.');
+    }
   }
 
   flipped=[];
@@ -291,11 +419,11 @@ function checkPair(){
 
 function chooseSipTarget(){
   const options=players.map((p,i)=>i===turn?'':`${i+1}: ${p.name}`).filter(Boolean).join('\\n');
-  const answer=prompt(`HOT STREAK! Choose someone to sip:\\n\\n${options}\\n\\nEnter player number 1–4:`);
+  const answer=prompt(`HOT STREAK! Choose someone to sip:\\n\\n${options}\\n\\nEnter player number 1–${numPlayers}:`);
 
   const n=parseInt(answer)-1;
 
-  if(n>=0 && n<4 && n!==turn){
+  if(n>=0 && n<numPlayers && n!==turn){
     players[n].sips++;
     showNotice(`${players[n].name} takes a sip!`);
   }
@@ -334,12 +462,19 @@ document.getElementById('killBtn').onclick=()=>{
 function killPhoto(id){
   cards=cards.filter(c=>c.id!==id);
   matched=cards.filter(c=>c.matched).length;
-  players[turn].sips+=2;
   streak=0;
+
+  if(isSolo){
+    elapsedMs+=10000;
+    document.getElementById('timerDisplay').textContent=fmtTime(elapsedMs);
+    showNotice(`Picture killed — +10 second penalty.`);
+  } else {
+    players[turn].sips+=2;
+    showNotice(`${players[turn].name} killed a picture — 2-sip penalty.`);
+  }
 
   document.getElementById('killModal').classList.remove('show');
 
-  showNotice(`${players[turn].name} killed a picture — 2-sip penalty.`);
   renderPlayers();
   renderBoard();
   updateStats();
@@ -353,11 +488,13 @@ document.getElementById('newBtn').onclick=()=>{
   document.getElementById('game').style.display='none';
   document.getElementById('setup').style.display='block';
 
+  stopTimer();
   cards=[];
   flipped=[];
   matched=0;
   turn=0;
   streak=0;
+  elapsedMs=0;
 
   players.forEach(p=>{
     p.matches=0;
